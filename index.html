@@ -114,9 +114,9 @@
             "esri/geometry/geometryEngine"
         ], function(Map, MapView, FeatureLayer, geometryEngine) {
 
-            // 1. Initialize Map
+            // 1. Initialize Map with OpenStreetMap (Fixes blank screen)
             const map = new Map({
-                basemap: "topo-vector" // Topographic basemap
+                basemap: "osm" 
             });
 
             const view = new MapView({
@@ -126,15 +126,14 @@
                 zoom: 7
             });
 
-            // 2. Load BOTH Feature Layers
-            // ---> REPLACE THESE URLS WITH YOUR HOSTED FEATURE LAYER URLS <---
+            // 2. Load BOTH Feature Layers (With /0 added to the end)
             const usgsLayer = new FeatureLayer({
-                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/usgs_snow_energy_balance/FeatureServer", 
+                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/usgs_snow_energy_balance/FeatureServer/0", 
                 outFields: ["*"] 
             });
             
             const snotelLayer = new FeatureLayer({
-                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/snotel_snow_energy_balance/FeatureServer", 
+                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/snotel_snow_energy_balance/FeatureServer/0", 
                 outFields: ["*"] 
             });
 
