@@ -11,12 +11,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body { 
+        html, body { 
             margin: 0; 
             padding: 0; 
+            height: 100vh; 
+            width: 100%;
             display: flex; 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            height: 100vh; 
             background-color: #f4f7f6; 
         }
         #mapView { 
@@ -107,21 +108,20 @@
     <script>
         let meltChartInstance = null;
 
-require([
+        require([
             "esri/Map",
             "esri/views/MapView",
             "esri/layers/FeatureLayer",
             "esri/geometry/geometryEngine",
-            "esri/layers/WebTileLayer" // 1. Swap to WebTileLayer
+            "esri/layers/WebTileLayer"
         ], function(Map, MapView, FeatureLayer, geometryEngine, WebTileLayer) {
 
-            // 2. Point directly to OpenStreetMap's public servers, completely bypassing Esri
+            // Bypass Esri API key restrictions by using public OSM tiles directly
             const osmBaseLayer = new WebTileLayer({
                 urlTemplate: "https://tile.openstreetmap.org/{level}/{col}/{row}.png",
                 copyright: "&copy; OpenStreetMap contributors"
             });
 
-            // 3. Set the map to use our direct layer
             const map = new Map({
                 basemap: {
                     baseLayers: [osmBaseLayer]
@@ -131,17 +131,10 @@ require([
             const view = new MapView({
                 container: "mapView",
                 map: map,
-                center: [-106.5, 39.5], // Centered on Colorado
-                zoom: 7
-            });
-            const view = new MapView({
-                container: "mapView",
-                map: map,
-                center: [-106.5, 39.5], // Centered on Colorado
+                center: [-106.5, 39.5], 
                 zoom: 7
             });
 
-            // 2. Load BOTH Feature Layers (With /0 added to the end)
             const usgsLayer = new FeatureLayer({
                 url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/usgs_snow_energy_balance/FeatureServer/0", 
                 outFields: ["*"] 
@@ -154,13 +147,12 @@ require([
 
             map.addMany([usgsLayer, snotelLayer]);
 
-            // 3. Handle Map Clicks
             view.on("click", function(event) {
                 document.getElementById('instructions').style.display = 'none';
                 
                 const queryParams = {
                     geometry: event.mapPoint,
-                    distance: 100, // Search within 100 miles
+                    distance: 100, 
                     units: "miles",
                     returnGeometry: true
                 };
@@ -168,12 +160,10 @@ require([
                 const usgsQuery = usgsLayer.queryFeatures(queryParams);
                 const snotelQuery = snotelLayer.queryFeatures(queryParams);
 
-                // Query both layers simultaneously
                 Promise.all([usgsQuery, snotelQuery]).then(function(results) {
                     const combinedFeatures = [...results[0].features, ...results[1].features];
 
                     if (combinedFeatures.length > 0) {
-                        // Find the absolute closest station
                         let closestFeature = combinedFeatures[0];
                         let minDistance = geometryEngine.distance(event.mapPoint, closestFeature.geometry, "miles");
 
@@ -185,7 +175,6 @@ require([
                             }
                         }
                         
-                        // Run math on closest station
                         calculateAndDisplay(closestFeature.attributes);
                     } else {
                         alert("No weather stations found within 100 miles. Try clicking closer to the mountains.");
@@ -196,9 +185,7 @@ require([
             });
         });
 
-        // 4. Energy Balance Math and UI Updates
         function calculateAndDisplay(att) {
-            // Safeguard variables to prevent NaN errors
             const SW_in = att.SW_in || 0;
             const LW_net = att.LW_net || 0;
             const T_air = att.T_air || 0;
@@ -208,17 +195,14 @@ require([
             const alpha_emp = att.empirical_albedo || 0.85;
             const beta = att.beta_coeff || 15.0;
 
-            // Math: Baseline vs Dusted
             const Qm_clean = ((1 - alpha_0) * SW_in) + LW_net + (beta * (T_air - T_surf)) + Qp;
             const Qm_dust = ((1 - alpha_emp) * SW_in) + LW_net + (beta * (T_air - T_surf)) + Qp;
 
-            // Calculate Difference
             let percentIncrease = 0;
             if (Qm_clean !== 0) {
                 percentIncrease = ((Qm_dust - Qm_clean) / Math.abs(Qm_clean)) * 100;
             }
 
-            // Display Results
             document.getElementById('resultsCard').style.display = 'block';
             document.getElementById('chart-container').style.display = 'block';
             
@@ -226,18 +210,19 @@ require([
             document.getElementById('val-tair').innerText = T_air.toFixed(2) + " °C";
             document.getElementById('val-alpha0').innerText = alpha_0.toFixed(2);
             document.getElementById('val-alphaD').innerText = alpha_emp.toFixed(3);
-            document.getElementById('val-cd').innerText = (att.Cd_backtracked || 0).toFixed(4);
+            
+            // Replaced baseline 0 handling for backtracking phase
+            document.getElementById('val-cd').innerText = (att.Cd_backtracked || 0.000001).toFixed(6); 
+            
             document.getElementById('val-qmC').innerText = Qm_clean.toFixed(2) + " W/m²";
             document.getElementById('val-qmD').innerText = Qm_dust.toFixed(2) + " W/m²";
             
             document.getElementById('percentIncreaseText').innerText = 
                 percentIncrease > 0 ? `Melt Energy is ${percentIncrease.toFixed(1)}% higher due to dust.` : `No significant dust impact at current time.`;
 
-            // Draw Chart
             updateChart(Qm_clean, Qm_dust);
         }
 
-        // 5. Render the Chart.js Graphic
         function updateChart(clean, dust) {
             const ctx = document.getElementById('meltChart').getContext('2d');
             
@@ -253,8 +238,8 @@ require([
                         label: 'Melt Energy (W/m²)',
                         data: [clean, dust],
                         backgroundColor: [
-                            'rgba(52, 152, 219, 0.7)', // Blue
-                            'rgba(231, 76, 60, 0.7)'   // Red
+                            'rgba(52, 152, 219, 0.7)', 
+                            'rgba(231, 76, 60, 0.7)'   
                         ],
                         borderColor: [
                             'rgba(41, 128, 185, 1)',
@@ -268,7 +253,7 @@ require([
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false } // Hide legend for cleaner look
+                        legend: { display: false } 
                     },
                     scales: {
                         y: {
