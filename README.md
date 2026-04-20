@@ -3,7 +3,7 @@
 ## Overview
 This repository contains a full-stack spatial data pipeline and interactive web application designed to calculate real-time snowmelt energy balance across the Colorado Rockies. The model specifically highlights the impact of dust-on-snow (DOS) events by comparing baseline clean snow albedo against an empirical dust-decay albedo model.
 
-👉 **[View the Live Interactive Application Here](https://sofsieh.github.io/albedo-melt-calculator/)**
+ **[View the Live Interactive Application Here](https://sofsieh.github.io/albedo-melt-calculator/)**
 
 ## The Empirical Model
 The core of this project calculates the snowmelt energy (Qm) using a modified energy balance equation. It computes the theoretical melt rate of pristine snow and compares it to the accelerated melt rate caused by observed dust layers.
