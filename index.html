@@ -112,16 +112,28 @@ require([
             "esri/views/MapView",
             "esri/layers/FeatureLayer",
             "esri/geometry/geometryEngine",
-            "esri/layers/OpenStreetMapLayer" // 1. Add this module
-        ], function(Map, MapView, FeatureLayer, geometryEngine, OpenStreetMapLayer) { // 2. Add it here too
+            "esri/layers/WebTileLayer" // 1. Swap to WebTileLayer
+        ], function(Map, MapView, FeatureLayer, geometryEngine, WebTileLayer) {
 
-            // 3. Initialize Map using the public OSM layer to bypass API keys
+            // 2. Point directly to OpenStreetMap's public servers, completely bypassing Esri
+            const osmBaseLayer = new WebTileLayer({
+                urlTemplate: "https://tile.openstreetmap.org/{level}/{col}/{row}.png",
+                copyright: "&copy; OpenStreetMap contributors"
+            });
+
+            // 3. Set the map to use our direct layer
             const map = new Map({
                 basemap: {
-                    baseLayers: [new OpenStreetMapLayer()]
+                    baseLayers: [osmBaseLayer]
                 }
             });
 
+            const view = new MapView({
+                container: "mapView",
+                map: map,
+                center: [-106.5, 39.5], // Centered on Colorado
+                zoom: 7
+            });
             const view = new MapView({
                 container: "mapView",
                 map: map,
