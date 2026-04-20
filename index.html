@@ -107,16 +107,19 @@
     <script>
         let meltChartInstance = null;
 
-        require([
+require([
             "esri/Map",
             "esri/views/MapView",
             "esri/layers/FeatureLayer",
-            "esri/geometry/geometryEngine"
-        ], function(Map, MapView, FeatureLayer, geometryEngine) {
+            "esri/geometry/geometryEngine",
+            "esri/layers/OpenStreetMapLayer" // 1. Add this module
+        ], function(Map, MapView, FeatureLayer, geometryEngine, OpenStreetMapLayer) { // 2. Add it here too
 
-            // 1. Initialize Map with OpenStreetMap (Fixes blank screen)
+            // 3. Initialize Map using the public OSM layer to bypass API keys
             const map = new Map({
-                basemap: "osm" 
+                basemap: {
+                    baseLayers: [new OpenStreetMapLayer()]
+                }
             });
 
             const view = new MapView({
