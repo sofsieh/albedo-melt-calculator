@@ -180,6 +180,7 @@
                     distance: 100, 
                     units: "miles",
                     returnGeometry: true
+                    outFields: ["*"] //
                 };
 
                 const usgsQuery = usgsLayer.queryFeatures(queryParams);
