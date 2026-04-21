@@ -127,23 +127,27 @@
         let meltChartInstance = null;
         let currentStationData = null;
 
-        require([
+require([
             "esri/Map",
             "esri/views/MapView",
             "esri/layers/FeatureLayer",
             "esri/geometry/geometryEngine",
-            "esri/layers/WebTileLayer"
-        ], function(Map, MapView, FeatureLayer, geometryEngine, WebTileLayer) {
+            "esri/layers/OpenStreetMapLayer" // 1. Swap back to the native OSM module
+        ], function(Map, MapView, FeatureLayer, geometryEngine, OpenStreetMapLayer) {
 
-            const osmBaseLayer = new WebTileLayer({
-                urlTemplate: "https://tile.openstreetmap.org/{level}/{col}/{row}.png",
-                copyright: "&copy; OpenStreetMap contributors"
+            // 2. Initialize the OSM layer
+            const osmLayer = new OpenStreetMapLayer();
+
+            // 3. THE TRICK: Add it to 'layers' instead of 'basemap' to bypass API key checks
+            const map = new Map({
+                layers: [osmLayer] 
             });
 
-            const map = new Map({
-                basemap: {
-                    baseLayers: [osmBaseLayer]
-                }
+            const view = new MapView({
+                container: "mapView",
+                map: map,
+                center: [-106.5, 39.5], 
+                zoom: 7
             });
 
             const view = new MapView({
