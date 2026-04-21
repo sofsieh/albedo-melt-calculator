@@ -100,8 +100,8 @@
                 <option value="0.65">Coarse/Old Snow (α = 0.65)</option>
             </select>
 
-            <label for="customCd" style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em;">Dust Concentration Override (mg g⁻¹):</label>
-            <input type="number" id="customCd" step="0.01" placeholder="e.g. 0.03" style="width: 90%; padding: 6px; border-radius: 4px; border: 1px solid #ccc;">
+            <label for="customCd" style="display:block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em;">Observed dust thickness in top 3 cm of snow (cm):</label>
+            <input type="number" id="customCd" step="0.01" placeholder="e.g. 0.5" style="width: 90%; padding: 6px; border-radius: 4px; border: 1px solid #ccc;">
             
             <button onclick="applyCustomScenarios()" style="margin-top: 12px; width: 100%; padding: 8px; background-color: #f39c12; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Recalculate</button>
         </div>
@@ -135,10 +135,8 @@
             "esri/layers/OpenStreetMapLayer"
         ], function(Map, MapView, FeatureLayer, geometryEngine, OpenStreetMapLayer) {
 
-            // Initialize the reliable OSM Layer
             const osmLayer = new OpenStreetMapLayer();
 
-            // Add it as a standard layer to bypass Esri API key restrictions
             const map = new Map({
                 layers: [osmLayer] 
             });
@@ -150,13 +148,11 @@
                 zoom: 7
             });
 
-            // Force USGS points to draw as RED dots
             const usgsRenderer = {
                 type: "simple",
                 symbol: { type: "simple-marker", color: "#e74c3c", size: "14px", outline: { color: "white", width: 2 } }
             };
 
-            // Force SNOTEL points to draw as BLUE dots
             const snotelRenderer = {
                 type: "simple",
                 symbol: { type: "simple-marker", color: "#3498db", size: "14px", outline: { color: "white", width: 2 } }
@@ -174,10 +170,8 @@
                 renderer: snotelRenderer
             });
 
-            // Add the custom data back to the map
             map.addMany([usgsLayer, snotelLayer]);
 
-            // Reactivated Map Click Query Logic
             view.on("click", function(event) {
                 document.getElementById('instructions').style.display = 'none';
                 
@@ -228,6 +222,11 @@
         }
 
         function calculateAndDisplay(att) {
+            // 🚨 THE TRAP: This will print the actual ArcGIS column names to your Dev Console!
+            console.log("🚨 HERE IS THE RAW DATA FROM ARCGIS:", att);
+
+            // You will likely need to change these names (e.g., att.Air_Temp instead of att.T_air)
+            // Once you look at the console.log output, update the text after "att."
             const SW_in = att.SW_in || 0;
             const LW_net = att.LW_net || 0;
             const T_air = att.T_air || 0;
@@ -248,10 +247,14 @@
                 alpha_emp = alpha_0 - baselineDegradation;
             }
 
+            // NEW MATH: Dust Thickness to Concentration Conversion
             if (customCdInput !== "") {
-                Cd = parseFloat(customCdInput);
+                let observedThickness = parseFloat(customCdInput);
                 
-                // ADJUST THIS MULTIPLIER: Default set to * 2.5 for the placeholder linear slope
+                // Convert thickness to concentration (Cd)
+                Cd = observedThickness * 0.067; 
+                
+                // Multiply concentration by your degradation slope (Update the 2.5!)
                 const dustDegradationFactor = Cd * 2.5; 
                 
                 alpha_emp = alpha_0 - dustDegradationFactor;
@@ -269,6 +272,7 @@
             document.getElementById('resultsCard').style.display = 'block';
             document.getElementById('chart-container').style.display = 'block';
             
+            // You will also need to update att.site_no here to match your true column name
             document.getElementById('stationId').innerText = att.site_no || "Unknown Station";
             document.getElementById('val-tair').innerText = T_air.toFixed(2) + " °C";
             document.getElementById('val-alpha0').innerText = alpha_0.toFixed(2);
