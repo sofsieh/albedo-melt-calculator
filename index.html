@@ -148,6 +148,48 @@
                 zoom: 7
             });
 
+            // --- NEW: RIVER BASIN LAYER ---
+            
+            // 1. Styling the Basin Polygons (Transparent blue fill, solid blue outline)
+            const basinRenderer = {
+                type: "simple",
+                symbol: {
+                    type: "simple-fill",
+                    color: [52, 152, 219, 0.15], 
+                    outline: {
+                        color: [41, 128, 185, 0.8],
+                        width: 2
+                    }
+                }
+            };
+
+            // 2. Styling the Basin Labels
+            const basinLabelClass = {
+                symbol: {
+                    type: "text",
+                    color: "#2c3e50",
+                    haloColor: "white",
+                    haloSize: "2px",
+                    font: {
+                        size: 11,
+                        family: "sans-serif",
+                        weight: "bold"
+                    }
+                },
+                labelPlacement: "always-horizontal",
+                labelExpressionInfo: {
+                    expression: "$feature.HU6NAME" // <--- UPDATE "NAME" IF YOUR COLUMN IS CALLED SOMETHING ELSE!
+                }
+            };
+
+            // 3. Creating the Basin Layer
+            const basinLayer = new FeatureLayer({
+                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/All_River_Basins/FeatureServer/0", 
+                renderer: basinRenderer,
+                labelingInfo: [basinLabelClass]
+            });
+            // ------------------------------
+
             const usgsRenderer = {
                 type: "simple",
                 symbol: { type: "simple-marker", color: "#e74c3c", size: "14px", outline: { color: "white", width: 2 } }
@@ -170,7 +212,8 @@
                 renderer: snotelRenderer
             });
 
-            map.addMany([usgsLayer, snotelLayer]);
+            // ADD LAYERS TO MAP: Basins go first so they sit UNDER the red and blue dots!
+            map.addMany([basinLayer, usgsLayer, snotelLayer]);
 
             view.on("click", function(event) {
                 document.getElementById('instructions').style.display = 'none';
@@ -180,7 +223,7 @@
                     distance: 100, 
                     units: "miles",
                     returnGeometry: true,
-                    outFields: ["*"] // FORCE ARCGIS TO BRING THE DATA
+                    outFields: ["*"] 
                 };
 
                 const usgsQuery = usgsLayer.queryFeatures(queryParams);
@@ -223,7 +266,6 @@
         }
 
         function calculateAndDisplay(att) {
-            // THE TRAP: Look here in the Developer Console after clicking a dot!
             console.log("🚨 HERE IS THE RAW DATA FROM ARCGIS:", att);
 
             const SW_in = att.SW_in || 0;
@@ -249,10 +291,8 @@
             if (customCdInput !== "") {
                 let observedThickness = parseFloat(customCdInput);
                 
-                // Convert thickness to concentration (Cd)
                 Cd = observedThickness * 0.067; 
                 
-                // Multiply concentration by your degradation slope
                 const dustDegradationFactor = Cd * 2.5; 
                 
                 alpha_emp = alpha_0 - dustDegradationFactor;
