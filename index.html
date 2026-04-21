@@ -145,3 +145,191 @@
 
             const view = new MapView({
                 container: "mapView",
+                map: map,
+                center: [-106.5, 39.5], 
+                zoom: 7
+            });
+
+            // Force USGS points to draw as RED dots
+            const usgsRenderer = {
+                type: "simple",
+                symbol: { type: "simple-marker", color: "#e74c3c", size: "14px", outline: { color: "white", width: 2 } }
+            };
+
+            // Force SNOTEL points to draw as BLUE dots
+            const snotelRenderer = {
+                type: "simple",
+                symbol: { type: "simple-marker", color: "#3498db", size: "14px", outline: { color: "white", width: 2 } }
+            };
+
+            const usgsLayer = new FeatureLayer({
+                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/usgs_snow_energy_balance/FeatureServer/0", 
+                outFields: ["*"],
+                renderer: usgsRenderer
+            });
+            
+            const snotelLayer = new FeatureLayer({
+                url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/snotel_snow_energy_balance/FeatureServer/0", 
+                outFields: ["*"],
+                renderer: snotelRenderer
+            });
+
+            // Add the custom data back to the map
+            map.addMany([usgsLayer, snotelLayer]);
+
+            // Reactivated Map Click Query Logic
+            view.on("click", function(event) {
+                document.getElementById('instructions').style.display = 'none';
+                
+                const queryParams = {
+                    geometry: event.mapPoint,
+                    distance: 100, 
+                    units: "miles",
+                    returnGeometry: true
+                };
+
+                const usgsQuery = usgsLayer.queryFeatures(queryParams);
+                const snotelQuery = snotelLayer.queryFeatures(queryParams);
+
+                Promise.all([usgsQuery, snotelQuery]).then(function(results) {
+                    const combinedFeatures = [...results[0].features, ...results[1].features];
+
+                    if (combinedFeatures.length > 0) {
+                        let closestFeature = combinedFeatures[0];
+                        let minDistance = geometryEngine.distance(event.mapPoint, closestFeature.geometry, "miles");
+
+                        for (let i = 1; i < combinedFeatures.length; i++) {
+                            let dist = geometryEngine.distance(event.mapPoint, combinedFeatures[i].geometry, "miles");
+                            if (dist < minDistance) {
+                                minDistance = dist;
+                                closestFeature = combinedFeatures[i];
+                            }
+                        }
+                        
+                        currentStationData = closestFeature.attributes;
+                        document.getElementById('customInputsCard').style.display = 'block';
+                        document.getElementById('grainType').value = 'default';
+                        document.getElementById('customCd').value = '';
+
+                        calculateAndDisplay(currentStationData);
+                    } else {
+                        alert("No weather stations found within 100 miles. Try clicking closer to the mountains.");
+                    }
+                }).catch(function(error) {
+                    console.error("Error querying layers: ", error);
+                });
+            });
+        });
+
+        function applyCustomScenarios() {
+            if (currentStationData) {
+                calculateAndDisplay(currentStationData);
+            }
+        }
+
+        function calculateAndDisplay(att) {
+            const SW_in = att.SW_in || 0;
+            const LW_net = att.LW_net || 0;
+            const T_air = att.T_air || 0;
+            const T_surf = att.T_surf || 0;
+            const Qp = att.Qp || 0;
+            const beta = att.beta_coeff || 15.0;
+
+            let alpha_0 = att.alpha_clean || 0.85;
+            let Cd = att.Cd_backtracked || 0.000001;
+            let alpha_emp = att.empirical_albedo || 0.85;
+
+            const grainSelect = document.getElementById('grainType').value;
+            const customCdInput = document.getElementById('customCd').value;
+
+            if (grainSelect !== "default") {
+                alpha_0 = parseFloat(grainSelect);
+                let baselineDegradation = (att.alpha_clean || 0.85) - (att.empirical_albedo || 0.85);
+                alpha_emp = alpha_0 - baselineDegradation;
+            }
+
+            if (customCdInput !== "") {
+                Cd = parseFloat(customCdInput);
+                
+                // ADJUST THIS MULTIPLIER: Default set to * 2.5 for the placeholder linear slope
+                const dustDegradationFactor = Cd * 2.5; 
+                
+                alpha_emp = alpha_0 - dustDegradationFactor;
+                if (alpha_emp < 0.3) alpha_emp = 0.3; 
+            }
+
+            const Qm_clean = ((1 - alpha_0) * SW_in) + LW_net + (beta * (T_air - T_surf)) + Qp;
+            const Qm_dust = ((1 - alpha_emp) * SW_in) + LW_net + (beta * (T_air - T_surf)) + Qp;
+
+            let percentIncrease = 0;
+            if (Qm_clean !== 0) {
+                percentIncrease = ((Qm_dust - Qm_clean) / Math.abs(Qm_clean)) * 100;
+            }
+
+            document.getElementById('resultsCard').style.display = 'block';
+            document.getElementById('chart-container').style.display = 'block';
+            
+            document.getElementById('stationId').innerText = att.site_no || "Unknown Station";
+            document.getElementById('val-tair').innerText = T_air.toFixed(2) + " °C";
+            document.getElementById('val-alpha0').innerText = alpha_0.toFixed(2);
+            document.getElementById('val-alphaD').innerText = alpha_emp.toFixed(3);
+            
+            document.getElementById('val-cd').innerText = Cd.toFixed(6); 
+            
+            document.getElementById('val-qmC').innerText = Qm_clean.toFixed(2) + " W/m²";
+            document.getElementById('val-qmD').innerText = Qm_dust.toFixed(2) + " W/m²";
+            
+            document.getElementById('percentIncreaseText').innerText = 
+                percentIncrease > 0 ? `Melt Energy is ${percentIncrease.toFixed(1)}% higher due to dust.` : `No significant dust impact at current time.`;
+
+            updateChart(Qm_clean, Qm_dust);
+        }
+
+        function updateChart(clean, dust) {
+            const ctx = document.getElementById('meltChart').getContext('2d');
+            
+            if (meltChartInstance) {
+                meltChartInstance.destroy(); 
+            }
+
+            meltChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Clean Snow', 'Dusted Snow'],
+                    datasets: [{
+                        label: 'Melt Energy (W/m²)',
+                        data: [clean, dust],
+                        backgroundColor: [
+                            'rgba(52, 152, 219, 0.7)', 
+                            'rgba(231, 76, 60, 0.7)'   
+                        ],
+                        borderColor: [
+                            'rgba(41, 128, 185, 1)',
+                            'rgba(192, 57, 43, 1)'
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false } 
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { 
+                                display: true, 
+                                text: 'Energy (W/m²)',
+                                font: { weight: 'bold' }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
