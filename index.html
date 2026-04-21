@@ -259,3 +259,68 @@
 
             document.getElementById('resultsCard').style.display = 'block';
             document.getElementById('chart-container').style.display = 'block';
+            
+            document.getElementById('stationId').innerText = att.site_no || "Unknown Station";
+            document.getElementById('val-tair').innerText = T_air.toFixed(2) + " °C";
+            document.getElementById('val-alpha0').innerText = alpha_0.toFixed(2);
+            document.getElementById('val-alphaD').innerText = alpha_emp.toFixed(3);
+            
+            document.getElementById('val-cd').innerText = Cd.toFixed(6); 
+            
+            document.getElementById('val-qmC').innerText = Qm_clean.toFixed(2) + " W/m²";
+            document.getElementById('val-qmD').innerText = Qm_dust.toFixed(2) + " W/m²";
+            
+            document.getElementById('percentIncreaseText').innerText = 
+                percentIncrease > 0 ? `Melt Energy is ${percentIncrease.toFixed(1)}% higher due to dust.` : `No significant dust impact at current time.`;
+
+            updateChart(Qm_clean, Qm_dust);
+        }
+
+        function updateChart(clean, dust) {
+            const ctx = document.getElementById('meltChart').getContext('2d');
+            
+            if (meltChartInstance) {
+                meltChartInstance.destroy(); 
+            }
+
+            meltChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Clean Snow', 'Dusted Snow'],
+                    datasets: [{
+                        label: 'Melt Energy (W/m²)',
+                        data: [clean, dust],
+                        backgroundColor: [
+                            'rgba(52, 152, 219, 0.7)', 
+                            'rgba(231, 76, 60, 0.7)'   
+                        ],
+                        borderColor: [
+                            'rgba(41, 128, 185, 1)',
+                            'rgba(192, 57, 43, 1)'
+                        ],
+                        borderWidth: 2,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false } 
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { 
+                                display: true, 
+                                text: 'Energy (W/m²)',
+                                font: { weight: 'bold' }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
