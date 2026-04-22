@@ -125,7 +125,7 @@
 
     <script>
         let meltChartInstance = null;
-        let currentStationData = null;
+        let currentStationFeature = null; // Store the entire feature, not just attributes
 
         require([
             "esri/Map",
@@ -136,11 +136,7 @@
         ], function(Map, MapView, FeatureLayer, geometryEngine, OpenStreetMapLayer) {
 
             const osmLayer = new OpenStreetMapLayer();
-
-            const map = new Map({
-                layers: [osmLayer] 
-            });
-
+            const map = new Map({ layers: [osmLayer] });
             const view = new MapView({
                 container: "mapView",
                 map: map,
@@ -148,53 +144,27 @@
                 zoom: 7
             });
 
-            // --- NEW: RIVER BASIN LAYER ---
-            
-            // 1. Styling the Basin Polygons (Transparent blue fill, solid blue outline)
             const basinRenderer = {
                 type: "simple",
-                symbol: {
-                    type: "simple-fill",
-                    color: [52, 152, 219, 0.15], 
-                    outline: {
-                        color: [41, 128, 185, 0.8],
-                        width: 2
-                    }
-                }
+                symbol: { type: "simple-fill", color: [52, 152, 219, 0.15], outline: { color: [41, 128, 185, 0.8], width: 2 } }
             };
 
-            // 2. Styling the Basin Labels
             const basinLabelClass = {
-                symbol: {
-                    type: "text",
-                    color: "#2c3e50",
-                    haloColor: "white",
-                    haloSize: "2px",
-                    font: {
-                        size: 11,
-                        family: "sans-serif",
-                        weight: "bold"
-                    }
-                },
+                symbol: { type: "text", color: "#2c3e50", haloColor: "white", haloSize: "2px", font: { size: 11, family: "sans-serif", weight: "bold" } },
                 labelPlacement: "always-horizontal",
-                labelExpressionInfo: {
-                    expression: "$feature.HU6NAME" // <--- UPDATE "NAME" IF YOUR COLUMN IS CALLED SOMETHING ELSE!
-                }
+                labelExpressionInfo: { expression: "$feature.NAME" } 
             };
 
-            // 3. Creating the Basin Layer
             const basinLayer = new FeatureLayer({
                 url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/All_River_Basins/FeatureServer/0", 
                 renderer: basinRenderer,
                 labelingInfo: [basinLabelClass]
             });
-            // ------------------------------
 
             const usgsRenderer = {
                 type: "simple",
                 symbol: { type: "simple-marker", color: "#e74c3c", size: "14px", outline: { color: "white", width: 2 } }
             };
-
             const snotelRenderer = {
                 type: "simple",
                 symbol: { type: "simple-marker", color: "#3498db", size: "14px", outline: { color: "white", width: 2 } }
@@ -202,17 +172,13 @@
 
             const usgsLayer = new FeatureLayer({
                 url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/usgs_snow_energy_balance/FeatureServer/0", 
-                outFields: ["*"],
-                renderer: usgsRenderer
+                outFields: ["*"], renderer: usgsRenderer
             });
-            
             const snotelLayer = new FeatureLayer({
                 url: "https://services1.arcgis.com/8DJsAMKuU5pXLFcd/arcgis/rest/services/snotel_snow_energy_balance/FeatureServer/0", 
-                outFields: ["*"],
-                renderer: snotelRenderer
+                outFields: ["*"], renderer: snotelRenderer
             });
 
-            // ADD LAYERS TO MAP: Basins go first so they sit UNDER the red and blue dots!
             map.addMany([basinLayer, usgsLayer, snotelLayer]);
 
             view.on("click", function(event) {
@@ -222,7 +188,7 @@
                     geometry: event.mapPoint,
                     distance: 100, 
                     units: "miles",
-                    returnGeometry: true,
+                    returnGeometry: true, // Crucial for getting latitude!
                     outFields: ["*"] 
                 };
 
@@ -244,14 +210,15 @@
                             }
                         }
                         
-                        currentStationData = closestFeature.attributes;
+                        // Pass the whole feature (geometry + attributes)
+                        currentStationFeature = closestFeature; 
                         document.getElementById('customInputsCard').style.display = 'block';
                         document.getElementById('grainType').value = 'default';
                         document.getElementById('customCd').value = '';
 
-                        calculateAndDisplay(currentStationData);
+                        calculateAndDisplay(currentStationFeature);
                     } else {
-                        alert("No weather stations found within 100 miles. Try clicking closer to the mountains.");
+                        alert("No weather stations found within 100 miles.");
                     }
                 }).catch(function(error) {
                     console.error("Error querying layers: ", error);
@@ -259,16 +226,42 @@
             });
         });
 
+        // --- NEW: THEORETICAL SHORTWAVE MODEL ---
+        function estimateClearSkyShortwave(lat, doy) {
+            const declination = 23.45 * Math.sin( (2 * Math.PI / 365) * (doy - 81) );
+            const latRad = lat * (Math.PI / 180);
+            const decRad = declination * (Math.PI / 180);
+            
+            // Zenith angle at solar noon
+            const zenithRad = latRad - decRad;
+            
+            // Solar constant (1367) * clear-sky transmittance (0.75) * angle
+            let sw = 1367 * 0.75 * Math.cos(zenithRad);
+            return Math.max(0, sw); // Can't have negative sunlight
+        }
+
         function applyCustomScenarios() {
-            if (currentStationData) {
-                calculateAndDisplay(currentStationData);
+            if (currentStationFeature) {
+                calculateAndDisplay(currentStationFeature);
             }
         }
 
-        function calculateAndDisplay(att) {
-            console.log("🚨 HERE IS THE RAW DATA FROM ARCGIS:", att);
+        function calculateAndDisplay(feature) {
+            const att = feature.attributes;
+            const geom = feature.geometry;
+            
+            console.log("🚨 RAW DATA:", att);
 
-            const SW_in = att.SW_in || 0;
+            let SW_in = att.SW_in; 
+            
+            // IF SW_in IS MISSING OR ZERO, CALCULATE THEORETICAL!
+            if (SW_in == null || SW_in <= 0) {
+                const DOY = 111; // Mid-April standard spring melt day
+                const lat = geom ? geom.latitude : 39.0; // Fallback to central CO
+                SW_in = estimateClearSkyShortwave(lat, DOY);
+                console.log(`⚠️ Sensor missing. Calculated Theoretical SW_in: ${SW_in.toFixed(2)} W/m² based on Lat: ${lat.toFixed(2)}`);
+            }
+
             const LW_net = att.LW_net || 0;
             const T_air = att.T_air || 0;
             const T_surf = att.T_surf || 0;
@@ -290,11 +283,8 @@
 
             if (customCdInput !== "") {
                 let observedThickness = parseFloat(customCdInput);
-                
                 Cd = observedThickness * 0.067; 
-                
                 const dustDegradationFactor = Cd * 2.5; 
-                
                 alpha_emp = alpha_0 - dustDegradationFactor;
                 if (alpha_emp < 0.3) alpha_emp = 0.3; 
             }
@@ -314,7 +304,6 @@
             document.getElementById('val-tair').innerText = T_air.toFixed(2) + " °C";
             document.getElementById('val-alpha0').innerText = alpha_0.toFixed(2);
             document.getElementById('val-alphaD').innerText = alpha_emp.toFixed(3);
-            
             document.getElementById('val-cd').innerText = Cd.toFixed(6); 
             
             document.getElementById('val-qmC').innerText = Qm_clean.toFixed(2) + " W/m²";
@@ -340,14 +329,8 @@
                     datasets: [{
                         label: 'Melt Energy (W/m²)',
                         data: [clean, dust],
-                        backgroundColor: [
-                            'rgba(52, 152, 219, 0.7)', 
-                            'rgba(231, 76, 60, 0.7)'   
-                        ],
-                        borderColor: [
-                            'rgba(41, 128, 185, 1)',
-                            'rgba(192, 57, 43, 1)'
-                        ],
+                        backgroundColor: ['rgba(52, 152, 219, 0.7)', 'rgba(231, 76, 60, 0.7)'],
+                        borderColor: ['rgba(41, 128, 185, 1)', 'rgba(192, 57, 43, 1)'],
                         borderWidth: 2,
                         borderRadius: 4
                     }]
@@ -355,17 +338,11 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false } 
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
                         y: {
                             beginAtZero: true,
-                            title: { 
-                                display: true, 
-                                text: 'Energy (W/m²)',
-                                font: { weight: 'bold' }
-                            }
+                            title: { display: true, text: 'Energy (W/m²)', font: { weight: 'bold' } }
                         }
                     }
                 }
